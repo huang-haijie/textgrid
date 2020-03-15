@@ -1,3 +1,16 @@
+
+# Fork of TextGrid
+
+This is a fork from https://github.com/kylebgorman/textgrid
+
+I made some minor changes in this fork such that the textgrid file loading has more tolerance on mal-formatted inputs.
+E.g., textgrid files with below formatting issues can still be loaded:
+
+- 1st line is empty. The script will still try to read the header from the 2nd line.
+- The stated number of intervals does not match the actual number of intervals in the content. The loading of intervals will stop when hitting an empty line without causing exception.
+
+# Original README
+
 textgrid.py
 ===========
 

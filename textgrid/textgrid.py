@@ -579,14 +579,23 @@ def parse_line(line, short, to_round):
         m = re.match(r'.+? = "(.*)"', line)
         return m.groups()[0]
     m = re.match(r'.+? = (.*)', line)
+    #[HHJ]
+    if m is None:
+        logging.error(f'{line}: pattern not found.')
     return round(float(m.groups()[0]), to_round)
 
 
 def parse_header(source):
-    header = source.readline()  # header junk
-    m = re.match(r'File type = "([\w ]+)"', header)
+    header = source.readline().strip()  # header junk
+
+    #[HHJ] Cater for mal-formatted file with empty first line or incorrect BOM.
+    if header == '':
+        logging.warning(f'Empty header line. Try to read header from the 2nd line.')
+        header =source.readline().strip()
+    # m = re.match(r'File type = "([\w ]+)"', header)
+    m = re.search(r'File type = "([\w ]+)"', header)
     if m is None or not m.groups()[0].startswith('ooTextFile'):
-        raise TextGridError('The file could not be parsed as a Praat text file as it is lacking a proper header.')
+        raise TextGridError(f'The file could not be parsed as a Praat text file as it is lacking a proper header: {header}')
 
     short = 'short' in m.groups()[0]
     file_type = parse_line(source.readline(), short, '')  # header junk
@@ -710,36 +719,46 @@ class TextGrid(object):
             if not short:
                 source.readline()
             for i in range(m):  # loop over grids
-                if not short:
-                    source.readline()
-                if parse_line(source.readline(), short, round_digits) == 'IntervalTier':
-                    inam = parse_line(source.readline(), short, round_digits)
-                    imin = parse_line(source.readline(), short, round_digits)
-                    imax = parse_line(source.readline(), short, round_digits)
-                    itie = IntervalTier(inam, imin, imax)
-                    itie.strict = self.strict
-                    n = int(parse_line(source.readline(), short, round_digits))
-                    for j in range(n):
-                        if not short:
-                            source.readline().rstrip().split()  # header junk
-                        jmin = parse_line(source.readline(), short, round_digits)
-                        jmax = parse_line(source.readline(), short, round_digits)
-                        jmrk = _getMark(source, short)
-                        if jmin < jmax:  # non-null
-                            itie.addInterval(Interval(jmin, jmax, jmrk))
-                    self.append(itie)
-                else:  # pointTier
-                    inam = parse_line(source.readline(), short, round_digits)
-                    imin = parse_line(source.readline(), short, round_digits)
-                    imax = parse_line(source.readline(), short, round_digits)
-                    itie = PointTier(inam)
-                    n = int(parse_line(source.readline(), short, round_digits))
-                    for j in range(n):
-                        source.readline().rstrip()  # header junk
-                        jtim = parse_line(source.readline(), short, round_digits)
-                        jmrk = _getMark(source, short)
-                        itie.addPoint(Point(jtim, jmrk))
-                    self.append(itie)
+                #[HHJ]
+                try:
+                    if not short:
+                        source.readline()
+                    if parse_line(source.readline(), short, round_digits) == 'IntervalTier':
+                        inam = parse_line(source.readline(), short, round_digits)
+                        imin = parse_line(source.readline(), short, round_digits)
+                        imax = parse_line(source.readline(), short, round_digits)
+                        itie = IntervalTier(inam, imin, imax)
+                        itie.strict = self.strict
+                        n = int(parse_line(source.readline(), short, round_digits))
+                        for j in range(n):
+                            if not short:
+                                #[HHJ] Cater for mal-formatted file whose size (n) does not match the actual of intervals.
+                                # source.readline().rstrip().split()  # header junk
+                                l = source.readline().strip()
+                                if l == '':
+                                    logging.warning(f'{inam} terminated unexpectedly.')
+                                    break
+                            jmin = parse_line(source.readline(), short, round_digits)
+                            jmax = parse_line(source.readline(), short, round_digits)
+                            jmrk = _getMark(source, short)
+                            if jmin < jmax:  # non-null
+                                itie.addInterval(Interval(jmin, jmax, jmrk))
+                        self.append(itie)
+                    else:  # pointTier
+                        inam = parse_line(source.readline(), short, round_digits)
+                        imin = parse_line(source.readline(), short, round_digits)
+                        imax = parse_line(source.readline(), short, round_digits)
+                        itie = PointTier(inam)
+                        n = int(parse_line(source.readline(), short, round_digits))
+                        for j in range(n):
+                            source.readline().rstrip()  # header junk
+                            jtim = parse_line(source.readline(), short, round_digits)
+                            jmrk = _getMark(source, short)
+                            itie.addPoint(Point(jtim, jmrk))
+                        self.append(itie)
+                except:
+                    logging.exception(f'Error when processing {inam} line {j}')
+                    raise
 
     def write(self, f, null=''):
         """
